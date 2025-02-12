@@ -1,0 +1,83 @@
+services:
+  kestradatabase:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: ${POSTGRES_KESTRA_DB}
+      POSTGRES_USER: ${POSTGRES_KESTRA_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_KESTRA_PASSWORD}
+    volumes:
+     - "../kestra_data_db:/var/lib/postgresql/data:rw"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  kestra:
+    image: kestra/kestra:latest
+    pull_policy: always
+    user: "root"
+    command: server standalone
+    volumes:
+      - "../kestra_data:/app/storage:rw"
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/kestra-wd:/tmp/kestra-wd
+    environment:
+      KESTRA_CONFIGURATION: |
+        datasources:
+          postgres:
+            url: jdbc:postgresql://kestradatabase:5432/${POSTGRES_KESTRA_DB}
+            driverClassName: org.postgresql.Driver
+            username: ${POSTGRES_KESTRA_USER}
+            password: ${POSTGRES_KESTRA_PASSWORD}
+        kestra:
+          server:
+            basicAuth:
+              enabled: false
+              username: ${KESTRA_USER}
+              password: ${KESTRA_PASSWORD}
+          repository:
+            type: postgres
+          storage:
+            type: local
+            local:
+              basePath: "/app/storage"
+          queue:
+            type: postgres
+          tasks:
+            tmpDir:
+              path: /tmp/kestra-wd/tmp
+          url: http://localhost:8080/
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    depends_on:
+      kestradatabase:
+        condition: service_started
+
+
+        
+  pgdatabase:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - "../ny_taxi_postgres_data:/var/lib/postgresql/data:rw"
+    ports:
+      - "5432:5432"
+    depends_on:
+      kestra:
+        condition: service_started
+
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
+      - PGADMIN_DEFAULT_PASSWORD=root
+    ports:
+      - "8084:80"
+    depends_on:
+      pgdatabase:
+        condition: service_started
